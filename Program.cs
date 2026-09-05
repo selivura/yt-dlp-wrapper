@@ -31,12 +31,11 @@ public class Program
 
         YtDlpBot ytdlpBot = new (bot, botUser);
 
-        ytdlpBot.Initialize();
+        await ytdlpBot.Initialize();
 
-        Console.WriteLine("Скибиди туалет шакалил ашкудишку");
         Console.ReadLine();
 
-        ytdlpBot.Deinitialize();
+        await ytdlpBot.Deinitialize();
         cts.Cancel();
     }
 }

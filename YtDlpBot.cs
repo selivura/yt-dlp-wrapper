@@ -16,24 +16,34 @@ public partial class YtDlpBot
         "https://www.youtube.com/watch?v="
     };
 
-    private HashSet<VidDownloader> _vidDownloaders = new();
+    private readonly BotCommand _startCmd = new("start", "Start the bot");
+    private readonly BotCommand _downloadCmd = new("ytdlp", "Download command");
+
+    public BotCommand[] _currentCommands;
+
+    private List<VidDownloader> _vidDownloaders = new();
 
     public YtDlpBot(TelegramBotClient bot, User botUser)
     {
         _bot = bot;
         _botUser = botUser;   
+        _currentCommands = [_startCmd, _downloadCmd];
     }
 
-    public void Initialize()
+    public async Task Initialize()
     {
         _bot.OnMessage += OnMessage;   
         _bot.OnError += OnError;
+        await _bot.SetMyCommands(_currentCommands);
+        Console.WriteLine("Bot initialized.");
     }
 
-    public void Deinitialize()
+    public async Task Deinitialize()
     {
         _bot.OnError -= OnError;
         _bot.OnMessage -= OnMessage;
+        await _bot.SetMyCommands(new List<BotCommand>());
+        Console.WriteLine("Bot stopped.");
     }
 
     async Task OnError(Exception exception, HandleErrorSource source)
@@ -46,9 +56,25 @@ public partial class YtDlpBot
         if (msg.Text is null) return;
 
         Console.WriteLine($"Received {type} '{msg.Text}' in {msg.Chat}");
-        if(msg.Text == "/start")
+        
+        for (int i = _vidDownloaders.Count - 1; i >= 0; i--)
         {
-            await HandleStartMessage(msg, type);
+            if(msg.Chat.Id == _vidDownloaders[i].Chat.Id)
+            {
+                if(_vidDownloaders[i].Finished) // Remove finished downloads from list.
+                {
+                    _vidDownloaders.RemoveAt(i);
+                    break;
+                }
+
+                await _vidDownloaders[i].HandleMsg(msg);
+                return;
+            }
+        }
+
+        if(msg.Text == "/" + _startCmd.Command)
+        {
+            await HandleStartMessage(msg);
             return;
         }
         
@@ -56,7 +82,7 @@ public partial class YtDlpBot
         {
             if(msg.Text.StartsWith(linkStart))
             {
-                await HandleYTLinkMessage(msg, linkStart);
+                await HandleLinkMessage(msg, linkStart);
                 return;
             }
         }
@@ -64,12 +90,12 @@ public partial class YtDlpBot
         await _bot.SendMessage(msg.Chat, $"Invalid link.");
     }
 
-    async Task HandleStartMessage(Message msg, UpdateType type)
+    async Task HandleStartMessage(Message msg)
     {
-        await _bot.SendMessage(msg.Chat, $"YT-DLP bot ready. Send yt link.");
+        await _bot.SendMessage(msg.Chat, $"YT-DLP bot ready. Send YT link.");
     }
 
-    async Task HandleYTLinkMessage(Message msg, string linkStart)
+    async Task HandleLinkMessage(Message msg, string linkStart)
     {
         var ytVidId = msg.Text.Remove(0, linkStart.Length);
 
@@ -78,7 +104,9 @@ public partial class YtDlpBot
             await _bot.SendMessage(msg.Chat, $"{msg.Text} is invalid");
         }
         var vidDownloader = new VidDownloader(msg.Chat, ytVidId, _bot);
+
         _vidDownloaders.Add(vidDownloader);
-        await vidDownloader.Start();
+        Console.WriteLine($"Added new downloader {msg.Chat.Id}");
+        await vidDownloader.BeginDownloadSetup();
     }
 }
