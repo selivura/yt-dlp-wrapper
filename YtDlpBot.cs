@@ -16,10 +16,6 @@ public partial class YtDlpBot
         "https://www.youtube.com/watch?v="
     };
 
-    private readonly BotCommand _startCmd = new("start", "Start the bot");
-    private readonly BotCommand _downloadCmd = new("ytdlp", "Download command");
-
-    public BotCommand[] _currentCommands;
 
     private List<VidDownloader> _vidDownloaders = new();
 
@@ -27,14 +23,12 @@ public partial class YtDlpBot
     {
         _bot = bot;
         _botUser = botUser;   
-        _currentCommands = [_startCmd, _downloadCmd];
     }
 
     public async Task Initialize()
     {
         _bot.OnMessage += OnMessage;   
         _bot.OnError += OnError;
-        await _bot.SetMyCommands(_currentCommands);
         Console.WriteLine("Bot initialized.");
     }
 
@@ -42,7 +36,6 @@ public partial class YtDlpBot
     {
         _bot.OnError -= OnError;
         _bot.OnMessage -= OnMessage;
-        await _bot.SetMyCommands(new List<BotCommand>());
         Console.WriteLine("Bot stopped.");
     }
 
@@ -72,7 +65,7 @@ public partial class YtDlpBot
             }
         }
 
-        if(msg.Text == "/" + _startCmd.Command)
+        if(msg.Text == START_COMMAND)
         {
             await HandleStartMessage(msg);
             return;

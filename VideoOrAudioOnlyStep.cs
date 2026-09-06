@@ -14,15 +14,12 @@ public class VideoOrAudioOnlyStep : DownloadStep
 
     public override async Task HandleMsg(Message msg)
     {
-        Console.WriteLine($"VideoOrAudioOnlyStep {Downloader.Chat.Id} recieved message: {msg.Text}");
         bool success = false;
         switch (msg.Text)
         {
             case ALL:
                 {
-                    Console.WriteLine($"{Downloader.Chat.Id}: Set best");
-                    Downloader.AddYtDlpArg("-f");
-                    Downloader.AddYtDlpArg("best");
+                    Console.WriteLine($"{Downloader.Chat.Id}: Set default");
                     success = true;
                     break;
                 }
