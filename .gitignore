@@ -3,3 +3,9 @@ token.env
 .vs/
 [Oo]bj/
 [Bb]in/
+external/
+.env
+.gitignore
+yt-dlp-wrapper.csproj
+tg-bot.Tests/
+user-cache/

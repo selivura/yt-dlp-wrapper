@@ -3,31 +3,25 @@ using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
-public partial class YtDlpBot
+namespace yt_dlp_wrapper;
+
+public class YtDlpBot
 {
+    private const string StartCommand = "/start";
+
     private readonly TelegramBotClient _bot;
     private readonly User _botUser;
-
-    private const string START_COMMAND = "/start";
-    public readonly string[] YtLinkStarts = new[]
-    {
-        "https://youtube.com/v/",
-        "https://youtu.be/",
-        "https://www.youtube.com/watch?v="
-    };
-
-
-    private List<VidDownloader> _vidDownloaders = new();
+    private readonly Dictionary<long, DownloadSession> _sessions = new();
 
     public YtDlpBot(TelegramBotClient bot, User botUser)
     {
         _bot = bot;
-        _botUser = botUser;   
+        _botUser = botUser;
     }
 
     public async Task Initialize()
     {
-        _bot.OnMessage += OnMessage;   
+        _bot.OnMessage += OnMessage;
         _bot.OnError += OnError;
         Console.WriteLine("Bot initialized.");
     }
@@ -39,67 +33,60 @@ public partial class YtDlpBot
         Console.WriteLine("Bot stopped.");
     }
 
-    async Task OnError(Exception exception, HandleErrorSource source)
+    private Task OnError(Exception exception, HandleErrorSource source)
     {
-        Console.WriteLine(exception); 
+        Console.WriteLine(exception);
+        return Task.CompletedTask;
     }
 
-    async Task OnMessage(Message msg, UpdateType type)
+    private async Task OnMessage(Message msg, UpdateType type)
     {
-        if (msg.Text is null) return;
+        if (msg.Text is null)
+        {
+            return;
+        }
 
         Console.WriteLine($"Received {type} '{msg.Text}' in {msg.Chat}");
-        
-        for (int i = _vidDownloaders.Count - 1; i >= 0; i--)
-        {
-            if(msg.Chat.Id == _vidDownloaders[i].Chat.Id)
-            {
-                if(_vidDownloaders[i].Finished) // Remove finished downloads from list.
-                {
-                    _vidDownloaders.RemoveAt(i);
-                    break;
-                }
 
-                await _vidDownloaders[i].HandleMsg(msg);
+        if (_sessions.TryGetValue(msg.Chat.Id, out var activeSession))
+        {
+            if (activeSession.IsFinished)
+            {
+                _sessions.Remove(msg.Chat.Id);
+            }
+            else
+            {
+                await activeSession.HandleMessageAsync(msg);
                 return;
             }
         }
 
-        if(msg.Text == START_COMMAND)
+        if (msg.Text.Equals(StartCommand, StringComparison.OrdinalIgnoreCase))
         {
             await HandleStartMessage(msg);
             return;
         }
-        
-        foreach (var linkStart in YtLinkStarts)
+
+        if (YoutubeLinkParser.TryParseVideoId(msg.Text, out var videoId))
         {
-            if(msg.Text.StartsWith(linkStart))
-            {
-                await HandleLinkMessage(msg, linkStart);
-                return;
-            }
+            await StartDownloadSession(msg.Chat, videoId);
+            return;
         }
-        
-        await _bot.SendMessage(msg.Chat, $"Invalid link.");
+
+        await _bot.SendMessage(msg.Chat, "Invalid link.");
     }
 
-    async Task HandleStartMessage(Message msg)
+    private async Task HandleStartMessage(Message msg)
     {
-        await _bot.SendMessage(msg.Chat, $"YT-DLP bot ready. Send YT link.");
+        await _bot.SendMessage(msg.Chat, "YT-DLP bot ready. Send YT link.");
     }
 
-    async Task HandleLinkMessage(Message msg, string linkStart)
+    private async Task StartDownloadSession(Chat chat, string videoId)
     {
-        var ytVidId = msg.Text.Remove(0, linkStart.Length);
+        var session = new DownloadSession(chat, videoId, _bot);
+        _sessions[chat.Id] = session;
 
-        if(ytVidId.Length != 11)
-        {
-            await _bot.SendMessage(msg.Chat, $"{msg.Text} is invalid");
-        }
-        var vidDownloader = new VidDownloader(msg.Chat, ytVidId, _bot);
-
-        _vidDownloaders.Add(vidDownloader);
-        Console.WriteLine($"Added new downloader {msg.Chat.Id}");
-        await vidDownloader.BeginDownloadSetup();
+        Console.WriteLine($"Added new downloader {chat.Id}");
+        await session.StartAsync();
     }
 }

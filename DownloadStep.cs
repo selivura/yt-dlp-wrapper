@@ -2,30 +2,41 @@ using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
 
+namespace yt_dlp_wrapper;
+
 public abstract class DownloadStep
 {
-    public readonly VidDownloader Downloader;
-    public DownloadStep(VidDownloader downloader)
+    protected DownloadSession Session { get; }
+
+    protected DownloadStep(DownloadSession session)
     {
-        Downloader = downloader;
+        Session = session;
     }
 
     protected abstract ReplyKeyboardMarkup CreateMarkup();
     protected abstract string CreateStepMessage();
 
-    /// <summary>
-    /// Check if the step should be skipped and return true if so.
-    /// </summary>
     public abstract bool ShouldSkipStep();
 
-    public async Task SendStepMessage()
+    public async Task SendStepMessageAsync()
     {
-        await Downloader.Bot.SendMessage(Downloader.Chat, CreateStepMessage(), replyMarkup:CreateMarkup().AddNewRow().AddButton(new KeyboardButton("Cancel")));
+        var rows = CreateMarkup().Keyboard
+            .Select(row => row.ToList())
+            .ToList();
+
+        rows.Add(new List<KeyboardButton>
+        {
+            new("Cancel")
+        });
+
+        var keyboard = new ReplyKeyboardMarkup(rows)
+        {
+            ResizeKeyboard = true,
+            OneTimeKeyboard = true
+        };
+
+        await Session.Notifier.SendMessageAsync(Session.Chat, CreateStepMessage(), keyboard);
     }
 
-    /// <summary>
-    /// Handle message sent by user and determine if step is finished or not. 
-    /// When step is finished use <see cref="Downloader.NextStep()"/> to move to the next step.
-    /// </summary>
-    public abstract Task HandleMsg(Message msg);
+    public abstract Task HandleMessageAsync(Message msg);
 }

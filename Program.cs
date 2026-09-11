@@ -1,41 +1,114 @@
-﻿using System;
-using Telegram.Bot;
+﻿using Telegram.Bot;
 
-public class Program
+namespace yt_dlp_wrapper;
+
+public static class Program
 {
-    private static async Task Main(string[] args)
+    public static async Task Main()
     {
-        if(!File.Exists("token.env"))
+        var envPath = new[]
         {
-            Console.WriteLine("Add token.env file to executble directiory.");
+            Path.Combine(Directory.GetCurrentDirectory(), ".env"),
+            Path.Combine(AppContext.BaseDirectory, ".env")
+        }.FirstOrDefault(File.Exists);
+
+        if (envPath is null)
+        {
+            Console.WriteLine("Add .env file to the working directory or executable directory.");
             return;
         }
 
-        string botToken = File.ReadLines("token.env").First();
-        Environment.SetEnvironmentVariable("BOT_TOKEN", botToken);
-        
+        var values = LoadEnvFile(envPath);
+
+        if (!values.TryGetValue("BOT_TOKEN", out var botToken) || string.IsNullOrWhiteSpace(botToken))
+        {
+            Console.WriteLine("The .env file does not contain BOT_TOKEN.");
+            return;
+        }
+
+        Environment.SetEnvironmentVariable("BOT_TOKEN", botToken.Trim());
+
+        foreach (var key in new[] { "FFMPEG_PATH", "YT-DLP_PATH", "YT_DLP_PATH" })
+        {
+            if (values.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+            {
+                var normalizedValue = ResolveConfiguredPath(value.Trim(), envPath);
+                Environment.SetEnvironmentVariable(key, normalizedValue);
+            }
+        }
+
         using var cts = new CancellationTokenSource();
+
         TelegramBotClient bot;
         try
         {
-            bot = new TelegramBotClient(botToken, cancellationToken: cts.Token);   
+            bot = new TelegramBotClient(botToken.Trim(), cancellationToken: cts.Token);
         }
         catch
         {
-            throw new ArgumentException("Invalid token");
+            throw new ArgumentException("Invalid token.");
         }
 
-        Console.WriteLine("Awaiting botUser from telegram...");
-
+        Console.WriteLine("Awaiting botUser from Telegram...");
         var botUser = await bot.GetMe();
 
-        YtDlpBot ytdlpBot = new (bot, botUser);
+        var ytDlpBot = new YtDlpBot(bot, botUser);
+        await ytDlpBot.Initialize();
 
-        await ytdlpBot.Initialize();
-
+        Console.WriteLine("Bot is running. Press Enter to stop.");
         Console.ReadLine();
 
-        await ytdlpBot.Deinitialize();
+        await ytDlpBot.Deinitialize();
         cts.Cancel();
+    }
+
+    private static Dictionary<string, string> LoadEnvFile(string envPath)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var line in File.ReadAllLines(envPath))
+        {
+            var trimmed = line.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith('#'))
+            {
+                continue;
+            }
+
+            var separatorIndex = trimmed.IndexOf('=');
+            if (separatorIndex <= 0)
+            {
+                continue;
+            }
+
+            var key = trimmed[..separatorIndex].Trim();
+            var value = trimmed[(separatorIndex + 1)..].Trim();
+
+            if (value.Length >= 2 && ((value.StartsWith('"') && value.EndsWith('"')) || (value.StartsWith('\'') && value.EndsWith('\''))))
+            {
+                value = value[1..^1];
+            }
+
+            values[key] = value;
+        }
+
+        return values;
+    }
+
+    private static string ResolveConfiguredPath(string value, string envPath)
+    {
+        var trimmed = value.Trim();
+
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return trimmed;
+        }
+
+        if (!Path.IsPathRooted(trimmed))
+        {
+            var baseDirectory = Path.GetDirectoryName(envPath) ?? Directory.GetCurrentDirectory();
+            return Path.GetFullPath(Path.Combine(baseDirectory, trimmed));
+        }
+
+        return Path.GetFullPath(trimmed);
     }
 }
